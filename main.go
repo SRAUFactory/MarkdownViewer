@@ -4,12 +4,14 @@ import "fmt"
 import "github.com/russross/blackfriday"
 import "io/ioutil"
 import "net/http"
+import "os"
 
 const lenPath = len("/")
 
 func getName(r *http.Request) string {
 	param := r.URL.Path[lenPath:]
-	return param + ".md"
+	home := os.Getenv("MARK_DOWN_HOME")
+	return home + "/" + param + ".md"
 }
 
 func view(w http.ResponseWriter, r *http.Request) {
