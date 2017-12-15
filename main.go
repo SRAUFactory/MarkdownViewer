@@ -5,8 +5,11 @@ import "github.com/russross/blackfriday"
 import "io/ioutil"
 import "net/http"
 
-func view(w http.ResponseWriter, req *http.Request) {
-	md, err := ioutil.ReadFile("test.md")
+const lenPath = len("/")
+
+func view(w http.ResponseWriter, r *http.Request) {
+	name := r.URL.Path[lenPath:]
+	md, err := ioutil.ReadFile(name + ".md")
 	if err != nil {
 		panic(err)
 	}
