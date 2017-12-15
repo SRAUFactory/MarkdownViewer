@@ -15,8 +15,7 @@ func getName(r *http.Request) string {
 func view(w http.ResponseWriter, r *http.Request) {
 	md, err := ioutil.ReadFile(getName(r))
 	if err != nil {
-		http.Redirect(w, r, "/", http.StatusFound)
-		return
+		md, err = ioutil.ReadFile("README.md")
 	}
 	output := blackfriday.MarkdownCommon([]byte(md))
 	fmt.Fprintf(w, string(output))
