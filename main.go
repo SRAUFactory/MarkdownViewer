@@ -7,11 +7,16 @@ import "net/http"
 
 const lenPath = len("/")
 
+func getName(r *http.Request) string {
+	param := r.URL.Path[lenPath:]
+	return param + ".md"
+}
+
 func view(w http.ResponseWriter, r *http.Request) {
-	name := r.URL.Path[lenPath:]
-	md, err := ioutil.ReadFile(name + ".md")
+	md, err := ioutil.ReadFile(getName(r))
 	if err != nil {
-		panic(err)
+		http.Redirect(w, r, "/", http.StatusFound)
+		return
 	}
 	output := blackfriday.MarkdownCommon([]byte(md))
 	fmt.Fprintf(w, string(output))
