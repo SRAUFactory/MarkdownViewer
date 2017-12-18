@@ -26,4 +26,4 @@ ex)
 http://localhost:8080/init
 ```
 
-If the specified file doesn't exist in `$ MARK_DOWN_HOME`,` README.md` is displayed.
+If the specified file doesn't exist in `$MARK_DOWN_HOME`, 404 error is displayed.
