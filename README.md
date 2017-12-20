@@ -7,7 +7,8 @@ This project is a tool for displaying Markdown format files as HTML on web brows
 cd $GOPAH/src
 go get github.com/russross/blackfriday
 go get github.com/SRAUFactory/MarkdownViewer
-go run github.com/SRAUFactory/MarkdownViewer/main.go
+cd github.com/SRAUFactory/MarkdownViewer
+go run main.go
 ```
 
 ## Setting environment variables
