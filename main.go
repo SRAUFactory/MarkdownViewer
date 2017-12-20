@@ -1,7 +1,7 @@
 package main
 
-import "fmt"
 import "github.com/russross/blackfriday"
+import "html/template"
 import "io/ioutil"
 import "net/http"
 import "os"
@@ -20,7 +20,8 @@ func view(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/", http.StatusFound)
 	}
 	output := blackfriday.MarkdownCommon([]byte(md))
-	fmt.Fprintf(w, string(output))
+	t := template.Must(template.ParseFiles("index.html"))
+	t.Execute(w, template.HTML(string(output)))
 }
 
 func main() {
