@@ -1,30 +1,55 @@
 package main
 
-import "github.com/russross/blackfriday"
-import "html/template"
-import "io/ioutil"
-import "net/http"
-import "os"
+import (
+	"html/template"
+	"log"
+	"net/http"
+	"os"
+	"path/filepath"
 
-const lenPath = len("/")
-
-func getName(r *http.Request) string {
-	param := r.URL.Path[lenPath:]
-	home := os.Getenv("MARK_DOWN_HOME")
-	return home + "/" + param + ".md"
-}
+	"github.com/russross/blackfriday"
+)
 
 func view(w http.ResponseWriter, r *http.Request) {
-	md, err := ioutil.ReadFile(getName(r))
+	name := r.PathValue("name") // Go 1.22+ パスパラメータ
+	if name == "" {
+		name = "index"
+	}
+
+	home := os.Getenv("MARK_DOWN_HOME")
+	if home == "" {
+		home = "."
+	}
+	filePath := filepath.Join(home, name+".md")
+
+	md, err := os.ReadFile(filePath)
 	if err != nil {
 		http.Redirect(w, r, "/", http.StatusFound)
+		return
 	}
-	output := blackfriday.MarkdownCommon([]byte(md))
-	t := template.Must(template.ParseFiles("index.html"))
+
+	output := blackfriday.MarkdownCommon(md)
+
+	t, err := template.ParseFiles("index.html")
+	if err != nil {
+		http.Error(w, "Template error", http.StatusInternalServerError)
+		return
+	}
 	t.Execute(w, template.HTML(string(output)))
 }
 
 func main() {
-	http.HandleFunc("/", view)
-	http.ListenAndServe(":8080", nil)
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /", view)
+	mux.HandleFunc("GET /{name}", view)
+
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8888"
+	}
+
+	log.Printf("Server listening on port %s...", port)
+	if err := http.ListenAndServe(":"+port, mux); err != nil {
+		log.Fatal(err)
+	}
 }
