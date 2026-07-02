@@ -110,9 +110,6 @@ func TestView(t *testing.T) {
 	origHome := os.Getenv("MARK_DOWN_HOME")
 	os.Setenv("MARK_DOWN_HOME", tmpDir)
 	defer os.Setenv("MARK_DOWN_HOME", origHome)
-
-	// index.html がカレントディレクトリにある想定のため、テストカレントディレクトリを変更するか、
-	// あるいは ../ などのパス解決になりますが、ここではテスト実行ディレクトリがプロジェクトルートである前提です。
 	
 	err = os.WriteFile(filepath.Join(tmpDir, "meta-present.md"), []byte(`---
 title: "Parsed Title"
@@ -135,8 +132,21 @@ Body text without meta.`), 0644)
 		t.Fatal(err)
 	}
 
+	// サブディレクトリのテスト用ファイル
+	err = os.Mkdir(filepath.Join(tmpDir, "sub"), 0755)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = os.WriteFile(filepath.Join(tmpDir, "sub", "sub-file.md"), []byte(`---
+title: "Sub File"
+---
+Sub body.`), 0644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /{name}", view)
+	mux.HandleFunc("GET /{name...}", view)
 
 	tests := []struct {
 		name             string
@@ -145,6 +155,7 @@ Body text without meta.`), 0644)
 		expectedMeta     string
 		expectedBody     string
 		shouldNotContain string
+		expectedStatus   int
 	}{
 		{
 			name:             "With Meta",
@@ -168,33 +179,58 @@ Body text without meta.`), 0644)
 			expectedMeta:     "Updated at:",
 			expectedBody:     "Just body text.",
 		},
+		{
+			name:             "With Subdirectory",
+			path:             "/sub/sub-file",
+			expectedTitle:    "<title>Sub File - Markdown Viewer</title>",
+			expectedMeta:     "",
+			expectedBody:     "Sub body.",
+		},
+		{
+			name:             "Traversal Attack",
+			path:             "/../escaped-file",
+			expectedStatus:   http.StatusForbidden,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			req := httptest.NewRequest("GET", tt.path, nil)
 			w := httptest.NewRecorder()
-			mux.ServeHTTP(w, req)
+
+			if tt.name == "Traversal Attack" {
+				req.SetPathValue("name", "../escaped-file")
+				view(w, req)
+			} else {
+				mux.ServeHTTP(w, req)
+			}
 
 			resp := w.Result()
 			body, _ := io.ReadAll(resp.Body)
 			bodyStr := string(body)
 
-			if resp.StatusCode != http.StatusOK {
-				t.Errorf("expected status 200, got %d. Body: %s", resp.StatusCode, bodyStr)
+			expectedStatus := tt.expectedStatus
+			if expectedStatus == 0 {
+				expectedStatus = http.StatusOK
 			}
 
-			if !strings.Contains(bodyStr, tt.expectedTitle) {
-				t.Errorf("expected title html %q in body, but not found", tt.expectedTitle)
+			if resp.StatusCode != expectedStatus {
+				t.Errorf("expected status %d, got %d. Body: %s", expectedStatus, resp.StatusCode, bodyStr)
 			}
-			if tt.expectedMeta != "" && !strings.Contains(bodyStr, tt.expectedMeta) {
-				t.Errorf("expected meta text %q in body, but not found", tt.expectedMeta)
-			}
-			if !strings.Contains(bodyStr, tt.expectedBody) {
-				t.Errorf("expected body text %q in body, but not found", tt.expectedBody)
-			}
-			if tt.shouldNotContain != "" && strings.Contains(bodyStr, tt.shouldNotContain) {
-				t.Errorf("found unwanted text %q in body", tt.shouldNotContain)
+
+			if expectedStatus == http.StatusOK {
+				if !strings.Contains(bodyStr, tt.expectedTitle) {
+					t.Errorf("expected title html %q in body, but not found", tt.expectedTitle)
+				}
+				if tt.expectedMeta != "" && !strings.Contains(bodyStr, tt.expectedMeta) {
+					t.Errorf("expected meta text %q in body, but not found", tt.expectedMeta)
+				}
+				if !strings.Contains(bodyStr, tt.expectedBody) {
+					t.Errorf("expected body text %q in body, but not found", tt.expectedBody)
+				}
+				if tt.shouldNotContain != "" && strings.Contains(bodyStr, tt.shouldNotContain) {
+					t.Errorf("found unwanted text %q in body", tt.shouldNotContain)
+				}
 			}
 		})
 	}

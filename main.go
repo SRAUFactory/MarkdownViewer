@@ -96,22 +96,40 @@ func view(w http.ResponseWriter, r *http.Request) {
 		if home == "" {
 			home = "."
 		}
-		filePath := filepath.Join(home, name+".md")
+		
+		absHome, err := filepath.Abs(home)
+		if err != nil {
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
 
-		fileInfo, err := os.Stat(filePath)
+		filePath := filepath.Join(absHome, name+".md")
+		absFilePath, err := filepath.Abs(filePath)
 		if err != nil {
 			http.Redirect(w, r, "/", http.StatusFound)
 			return
 		}
 
-		mdBytes, err := os.ReadFile(filePath)
+		// ディレクトリトラバーサル防止チェック
+		if !strings.HasPrefix(absFilePath, absHome) {
+			http.Error(w, "Forbidden", http.StatusForbidden)
+			return
+		}
+
+		fileInfo, err := os.Stat(absFilePath)
+		if err != nil {
+			http.Redirect(w, r, "/", http.StatusFound)
+			return
+		}
+
+		mdBytes, err := os.ReadFile(absFilePath)
 		if err != nil {
 			http.Redirect(w, r, "/", http.StatusFound)
 			return
 		}
 
 		meta, body := parseFrontMatter(string(mdBytes))
-		data.Title = extractTitle(meta, body, filePath)
+		data.Title = extractTitle(meta, body, absFilePath)
 
 		// updated_at の設定
 		if updatedAt, ok := meta["updated_at"]; ok && updatedAt != "" {
@@ -142,8 +160,7 @@ func view(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /", view)
-	mux.HandleFunc("GET /{name}", view)
+	mux.HandleFunc("GET /{name...}", view)
 
 	port := os.Getenv("PORT")
 	if port == "" {
