@@ -8,7 +8,7 @@ cd $GOPAH/src
 go get github.com/russross/blackfriday
 go get github.com/SRAUFactory/MarkdownViewer
 cd github.com/SRAUFactory/MarkdownViewer
-go run main.go
+go run .
 ```
 
 ## Setting environment variables

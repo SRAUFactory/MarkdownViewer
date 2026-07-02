@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
     <head>
-        <title>Markdown Viewer</title>
+        <title>{{if .IsIndex}}Markdown Viewer{{else}}{{.Title}} - Markdown Viewer{{end}}</title>
         <meta charset="utf-8">
         <style type="text/css">
         <!--
@@ -16,6 +16,16 @@
         </style>
     </head>
     <body>
-        {{.}}
+        {{if not .IsIndex}}
+        <header style="border-bottom: 1px solid #ccc; padding-bottom: 10px; margin-bottom: 20px;">
+            <h1 style="margin: 0 0 5px 0;">{{.Title}}</h1>
+            {{if .UpdatedAt}}
+            <small style="color: #666;">Updated at: {{.UpdatedAt}}</small>
+            {{end}}
+        </header>
+        {{end}}
+        <article>
+            {{.Body}}
+        </article>
     </body>
 </html>
