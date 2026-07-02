@@ -100,6 +100,79 @@ func TestExtractTitle(t *testing.T) {
 	}
 }
 
+func TestIndex(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "md_test_index")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	origHome := os.Getenv("MARK_DOWN_HOME")
+	os.Setenv("MARK_DOWN_HOME", tmpDir)
+	defer os.Setenv("MARK_DOWN_HOME", origHome)
+
+	// テスト用ファイル作成
+	err = os.WriteFile(filepath.Join(tmpDir, "file1.md"), []byte("# File 1"), 0644)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = os.Mkdir(filepath.Join(tmpDir, "folder1"), 0755)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = os.WriteFile(filepath.Join(tmpDir, "folder1", "file2.md"), []byte("# File 2"), 0644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 空のフォルダ（トリミング対象）
+	err = os.Mkdir(filepath.Join(tmpDir, "empty_folder"), 0755)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 非Markdownファイルのみを含むフォルダ（トリミング対象）
+	err = os.Mkdir(filepath.Join(tmpDir, "non_md_folder"), 0755)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = os.WriteFile(filepath.Join(tmpDir, "non_md_folder", "readme.txt"), []byte("not markdown"), 0644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest("GET", "/", nil)
+	w := httptest.NewRecorder()
+	index(w, req)
+
+	resp := w.Result()
+	body, _ := io.ReadAll(resp.Body)
+	bodyStr := string(body)
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("expected status 200, got %d. Body: %s", resp.StatusCode, bodyStr)
+	}
+
+	// ツリー形式のファイルリストがHTMLに含まれていることを検証
+	if !strings.Contains(bodyStr, "folder1") {
+		t.Errorf("expected 'folder1' in index page body, but not found")
+	}
+	if !strings.Contains(bodyStr, "file1") {
+		t.Errorf("expected 'file1' in index page body, but not found")
+	}
+	if !strings.Contains(bodyStr, "folder1/file2") {
+		t.Errorf("expected 'folder1/file2' in index page body, but not found")
+	}
+
+	// 空のフォルダや非Markdownフォルダが表示されていないことを検証
+	if strings.Contains(bodyStr, "empty_folder") {
+		t.Errorf("did not expect 'empty_folder' in index page body, but found")
+	}
+	if strings.Contains(bodyStr, "non_md_folder") {
+		t.Errorf("did not expect 'non_md_folder' in index page body, but found")
+	}
+}
+
 func TestView(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "md_test")
 	if err != nil {

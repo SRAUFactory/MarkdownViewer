@@ -11,12 +11,24 @@ import (
 	"github.com/russross/blackfriday"
 )
 
-// PageData はテンプレートに渡すデータ構造です。
+// PageData は記事テンプレート（view.html）に渡すデータ構造です。
 type PageData struct {
 	Title     string
 	UpdatedAt string
 	Body      template.HTML
-	IsIndex   bool
+}
+
+// FileNode はファイルシステムのツリー構造を表現します。
+type FileNode struct {
+	Name     string
+	Path     string
+	IsDir    bool
+	Children []*FileNode
+}
+
+// IndexData はインデックスページ（index.html）に渡すデータ構造です。
+type IndexData struct {
+	Tree *FileNode
 }
 
 // parseFrontMatter はMarkdownからYAML Front Matterをパースし、
@@ -81,76 +93,195 @@ func extractTitle(meta map[string]string, body string, filePath string) string {
 	return strings.TrimSuffix(base, ext)
 }
 
-func view(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("name") // Go 1.22+ パスパラメータ
-	if name == "" {
-		name = "index"
+// buildFileTree は指定されたルートディレクトリ以下のMarkdownファイルをスキャンしてツリー構造を作成します。
+func buildFileTree(rootDir string) (*FileNode, error) {
+	root := &FileNode{
+		Name:  "Root",
+		IsDir: true,
 	}
 
-	var data PageData
-	data.Title = "Markdown Viewer"
-	data.IsIndex = (name == "index")
-
-	if name != "index" {
-		home := os.Getenv("MARK_DOWN_HOME")
-		if home == "" {
-			home = "."
-		}
-		
-		absHome, err := filepath.Abs(home)
+	err := filepath.Walk(rootDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-			return
+			return err
 		}
 
-		filePath := filepath.Join(absHome, name+".md")
-		absFilePath, err := filepath.Abs(filePath)
+		if path == rootDir {
+			return nil
+		}
+
+		rel, err := filepath.Rel(rootDir, path)
 		if err != nil {
-			http.Redirect(w, r, "/", http.StatusFound)
-			return
+			return err
 		}
 
-		// ディレクトリトラバーサル防止チェック
-		if !strings.HasPrefix(absFilePath, absHome) {
-			http.Error(w, "Forbidden", http.StatusForbidden)
-			return
-		}
-
-		fileInfo, err := os.Stat(absFilePath)
-		if err != nil {
-			http.Redirect(w, r, "/", http.StatusFound)
-			return
-		}
-
-		mdBytes, err := os.ReadFile(absFilePath)
-		if err != nil {
-			http.Redirect(w, r, "/", http.StatusFound)
-			return
-		}
-
-		meta, body := parseFrontMatter(string(mdBytes))
-		data.Title = extractTitle(meta, body, absFilePath)
-
-		// updated_at の設定
-		if updatedAt, ok := meta["updated_at"]; ok && updatedAt != "" {
-			data.UpdatedAt = updatedAt
-		} else {
-			// 優先順位: 最終更新日時 => 作成日時
-			modTime := fileInfo.ModTime()
-			birthTime := getBirthTime(fileInfo)
-			
-			if !modTime.IsZero() {
-				data.UpdatedAt = modTime.Format("2006-01-02 15:04:05")
-			} else if !birthTime.IsZero() {
-				data.UpdatedAt = birthTime.Format("2006-01-02 15:04:05")
+		parts := strings.Split(rel, string(filepath.Separator))
+		// 隠しフォルダ・ファイルをスキップ
+		for _, part := range parts {
+			if strings.HasPrefix(part, ".") {
+				if info.IsDir() {
+					return filepath.SkipDir
+				}
+				return nil
 			}
 		}
 
-		output := blackfriday.MarkdownCommon([]byte(body))
-		data.Body = template.HTML(string(output))
+		if info.IsDir() {
+			insertNode(root, parts, "", true)
+		} else if strings.HasSuffix(info.Name(), ".md") {
+			urlPath := strings.TrimSuffix(rel, ".md")
+			insertNode(root, parts, urlPath, false)
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	// Markdownファイルを一つも含まない空のディレクトリをトリミング
+	pruneEmptyDirs(root)
+
+	return root, nil
+}
+
+// pruneEmptyDirs は子孫ノードにファイル（.md）が1つもないディレクトリノードをツリーから削除します。
+// 有効なファイルまたは有効な子要素を持つ場合は true を返します。
+func pruneEmptyDirs(node *FileNode) bool {
+	if !node.IsDir {
+		return true
+	}
+
+	var activeChildren []*FileNode
+	for _, child := range node.Children {
+		if pruneEmptyDirs(child) {
+			activeChildren = append(activeChildren, child)
+		}
+	}
+	node.Children = activeChildren
+
+	return len(node.Children) > 0
+}
+
+func insertNode(root *FileNode, parts []string, urlPath string, isDir bool) {
+	current := root
+	for i, part := range parts {
+		isLast := i == len(parts)-1
+		
+		targetName := part
+		if !isDir && isLast && strings.HasSuffix(part, ".md") {
+			targetName = strings.TrimSuffix(part, ".md")
+		}
+
+		var found *FileNode
+		for _, child := range current.Children {
+			if child.Name == targetName && child.IsDir == (!isLast || isDir) {
+				found = child
+				break
+			}
+		}
+
+		if found == nil {
+			node := &FileNode{
+				Name:  targetName,
+				IsDir: !isLast || isDir,
+			}
+			if !node.IsDir {
+				node.Path = urlPath
+			}
+			current.Children = append(current.Children, node)
+			current = node
+		} else {
+			current = found
+		}
+	}
+}
+
+func index(w http.ResponseWriter, r *http.Request) {
+	home := os.Getenv("MARK_DOWN_HOME")
+	if home == "" {
+		home = "."
+	}
+
+	tree, err := buildFileTree(home)
+	if err != nil {
+		http.Error(w, "Failed to build file tree", http.StatusInternalServerError)
+		return
 	}
 
 	t, err := template.ParseFiles("index.html")
+	if err != nil {
+		http.Error(w, "Template error", http.StatusInternalServerError)
+		return
+	}
+	t.Execute(w, IndexData{Tree: tree})
+}
+
+func view(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if name == "" {
+		http.Redirect(w, r, "/", http.StatusFound)
+		return
+	}
+
+	home := os.Getenv("MARK_DOWN_HOME")
+	if home == "" {
+		home = "."
+	}
+	
+	absHome, err := filepath.Abs(home)
+	if err != nil {
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	filePath := filepath.Join(absHome, name+".md")
+	absFilePath, err := filepath.Abs(filePath)
+	if err != nil {
+		http.Redirect(w, r, "/", http.StatusFound)
+		return
+	}
+
+	// ディレクトリトラバーサル防止チェック
+	if !strings.HasPrefix(absFilePath, absHome) {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+
+	fileInfo, err := os.Stat(absFilePath)
+	if err != nil {
+		http.Redirect(w, r, "/", http.StatusFound)
+		return
+	}
+
+	mdBytes, err := os.ReadFile(absFilePath)
+	if err != nil {
+		http.Redirect(w, r, "/", http.StatusFound)
+		return
+	}
+
+	meta, body := parseFrontMatter(string(mdBytes))
+	var data PageData
+	data.Title = extractTitle(meta, body, absFilePath)
+
+	// updated_at の設定
+	if updatedAt, ok := meta["updated_at"]; ok && updatedAt != "" {
+		data.UpdatedAt = updatedAt
+	} else {
+		modTime := fileInfo.ModTime()
+		birthTime := getBirthTime(fileInfo)
+		
+		if !modTime.IsZero() {
+			data.UpdatedAt = modTime.Format("2006-01-02 15:04:05")
+		} else if !birthTime.IsZero() {
+			data.UpdatedAt = birthTime.Format("2006-01-02 15:04:05")
+		}
+	}
+
+	output := blackfriday.MarkdownCommon([]byte(body))
+	data.Body = template.HTML(string(output))
+
+	t, err := template.ParseFiles("view.html")
 	if err != nil {
 		http.Error(w, "Template error", http.StatusInternalServerError)
 		return
@@ -160,6 +291,7 @@ func view(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /{$}", index)
 	mux.HandleFunc("GET /{name...}", view)
 
 	port := os.Getenv("PORT")

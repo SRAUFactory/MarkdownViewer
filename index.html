@@ -1,31 +1,82 @@
 <!DOCTYPE html>
 <html>
     <head>
-        <title>{{if .IsIndex}}Markdown Viewer{{else}}{{.Title}} - Markdown Viewer{{end}}</title>
+        <title>Markdown Viewer</title>
         <meta charset="utf-8">
         <style type="text/css">
-        <!--
-             pre {
-                 background-color: gray;
-             }
-             code {
-                 background-color: gray;
-                 color: #DDD;
-             }
-        -->
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: #f9f9f9;
+            color: #333;
+            margin: 40px;
+        }
+        h1 {
+            border-bottom: 2px solid #eaecef;
+            padding-bottom: 0.3em;
+        }
+        ul.tree, ul.tree ul {
+            list-style-type: none;
+            margin: 0;
+            padding: 0 0 0 20px;
+        }
+        ul.tree li {
+            margin: 5px 0;
+            position: relative;
+        }
+        .folder {
+            cursor: pointer;
+            font-weight: bold;
+            color: #0366d6;
+            user-select: none;
+        }
+        .folder::before {
+            content: "📂 ";
+        }
+        .folder.collapsed::before {
+            content: "📁 ";
+        }
+        .file::before {
+            content: "📄 ";
+        }
+        .file a {
+            color: #0366d6;
+            text-decoration: none;
+        }
+        .file a:hover {
+            text-decoration: underline;
+        }
+        .collapsed + ul {
+            display: none;
+        }
         </style>
     </head>
     <body>
-        {{if not .IsIndex}}
-        <header style="border-bottom: 1px solid #ccc; padding-bottom: 10px; margin-bottom: 20px;">
-            <h1 style="margin: 0 0 5px 0;">{{.Title}}</h1>
-            {{if .UpdatedAt}}
-            <small style="color: #666;">Updated at: {{.UpdatedAt}}</small>
-            {{end}}
-        </header>
-        {{end}}
-        <article>
-            {{.Body}}
-        </article>
+        <h1>Markdown Viewer - File List</h1>
+        <ul class="tree">
+            {{template "node" .Tree}}
+        </ul>
+
+        <script>
+            document.querySelectorAll('.folder').forEach(folder => {
+                folder.addEventListener('click', () => {
+                    folder.classList.toggle('collapsed');
+                });
+            });
+        </script>
     </body>
 </html>
+
+{{define "node"}}
+    {{range .Children}}
+        <li>
+            {{if .IsDir}}
+                <span class="folder">{{.Name}}</span>
+                <ul>
+                    {{template "node" .}}
+                </ul>
+            {{else}}
+                <span class="file"><a href="/{{.Path}}">{{.Name}}</a></span>
+            {{end}}
+        </li>
+    {{end}}
+{{end}}
