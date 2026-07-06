@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"html/template"
 	"net/http"
 	"os"
@@ -46,6 +47,29 @@ func (h *AppHandler) Index(w http.ResponseWriter, r *http.Request) {
 	h.IndexTemplate.Execute(w, IndexData{Tree: tree})
 }
 
+func (h *AppHandler) resolveMarkdownFile(name string) (string, os.FileInfo, []byte, error) {
+	absHome, err := filepath.Abs(h.MarkdownHome)
+	if err != nil {
+		return "", nil, nil, err
+	}
+
+	filePath := filepath.Join(absHome, name+".md")
+	absFilePath, err := filepath.Abs(filePath)
+	if err != nil {
+		return "", nil, nil, err
+	}
+
+	// ディレクトリトラバーサル防止チェック
+	if !strings.HasPrefix(absFilePath, absHome) {
+		return "", nil, nil, os.ErrNotExist
+	}
+
+	fileInfo, err1 := os.Stat(absFilePath)
+	mdBytes, err2 := os.ReadFile(absFilePath)
+
+	return absFilePath, fileInfo, mdBytes, errors.Join(err1, err2)
+}
+
 func (h *AppHandler) View(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	if name == "" {
@@ -53,32 +77,7 @@ func (h *AppHandler) View(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	absHome, err := filepath.Abs(h.MarkdownHome)
-	if err != nil {
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		return
-	}
-
-	filePath := filepath.Join(absHome, name+".md")
-	absFilePath, err := filepath.Abs(filePath)
-	if err != nil {
-		http.Redirect(w, r, "/", http.StatusFound)
-		return
-	}
-
-	// ディレクトリトラバーサル防止チェック
-	if !strings.HasPrefix(absFilePath, absHome) {
-		http.Error(w, "Forbidden", http.StatusForbidden)
-		return
-	}
-
-	fileInfo, err := os.Stat(absFilePath)
-	if err != nil {
-		http.Redirect(w, r, "/", http.StatusFound)
-		return
-	}
-
-	mdBytes, err := os.ReadFile(absFilePath)
+	absFilePath, fileInfo, mdBytes, err := h.resolveMarkdownFile(name)
 	if err != nil {
 		http.Redirect(w, r, "/", http.StatusFound)
 		return

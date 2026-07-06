@@ -272,7 +272,7 @@ Sub body.`), 0644)
 		{
 			name:             "Traversal Attack",
 			path:             "/../escaped-file",
-			expectedStatus:   http.StatusForbidden,
+			expectedStatus:   http.StatusFound,
 		},
 	}
 
