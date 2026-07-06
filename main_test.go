@@ -143,7 +143,12 @@ func TestIndex(t *testing.T) {
 
 	req := httptest.NewRequest("GET", "/", nil)
 	w := httptest.NewRecorder()
-	index(w, req)
+	
+	appHandler, err := NewAppHandler(tmpDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	appHandler.Index(w, req)
 
 	resp := w.Result()
 	body, _ := io.ReadAll(resp.Body)
@@ -218,8 +223,13 @@ Sub body.`), 0644)
 		t.Fatal(err)
 	}
 
+	appHandler, err := NewAppHandler(tmpDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /{name...}", view)
+	mux.HandleFunc("GET /{name...}", appHandler.View)
 
 	tests := []struct {
 		name             string
@@ -273,7 +283,7 @@ Sub body.`), 0644)
 
 			if tt.name == "Traversal Attack" {
 				req.SetPathValue("name", "../escaped-file")
-				view(w, req)
+				appHandler.View(w, req)
 			} else {
 				mux.ServeHTTP(w, req)
 			}
