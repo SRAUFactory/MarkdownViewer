@@ -87,19 +87,7 @@ func (h *AppHandler) View(w http.ResponseWriter, r *http.Request) {
 	var data PageData
 	data.Title = extractTitle(meta, body, absFilePath)
 
-	// updated_at の設定
-	if updatedAt, ok := meta["updated_at"]; ok && updatedAt != "" {
-		data.UpdatedAt = updatedAt
-	} else {
-		modTime := fileInfo.ModTime()
-		birthTime := getBirthTime(fileInfo)
-		
-		if !modTime.IsZero() {
-			data.UpdatedAt = modTime.Format("2006-01-02 15:04:05")
-		} else if !birthTime.IsZero() {
-			data.UpdatedAt = birthTime.Format("2006-01-02 15:04:05")
-		}
-	}
+	data.UpdatedAt = extractUpdatedAt(meta, fileInfo)
 
 	output := blackfriday.MarkdownCommon([]byte(body))
 	data.Body = template.HTML(string(output))

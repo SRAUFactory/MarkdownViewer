@@ -2,6 +2,7 @@ package main
 
 import (
 	"html/template"
+	"os"
 	"path/filepath"
 	"strings"
 )
@@ -73,4 +74,26 @@ func extractTitle(meta map[string]string, body string, filePath string) string {
 	base := filepath.Base(filePath)
 	ext := filepath.Ext(base)
 	return strings.TrimSuffix(base, ext)
+}
+
+// extractUpdatedAt は更新日時を優先順位に従って決定します。
+func extractUpdatedAt(meta map[string]string, fileInfo os.FileInfo) string {
+	if updatedAt, ok := meta["updated_at"]; ok && updatedAt != "" {
+		return updatedAt
+	}
+
+	if fileInfo == nil {
+		return ""
+	}
+
+	modTime := fileInfo.ModTime()
+	birthTime := getBirthTime(fileInfo)
+	
+	if !modTime.IsZero() {
+		return modTime.Format("2006-01-02 15:04:05")
+	} else if !birthTime.IsZero() {
+		return birthTime.Format("2006-01-02 15:04:05")
+	}
+
+	return ""
 }
